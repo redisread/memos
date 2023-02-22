@@ -26,4 +26,6 @@ COPY --from=backend /backend-build/memos /usr/local/memos/
 # Directory to store the data, which can be referenced as the mounting point.
 RUN mkdir -p /var/opt/memos
 
+EXPOSE 5230
+EXPOSE 80
 ENTRYPOINT ["./memos", "--mode", "prod", "--port", "5230"]
