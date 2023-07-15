@@ -1,7 +1,7 @@
 import { Button, Divider } from "@mui/joy";
 import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { useTranslation } from "react-i18next";
+import { useTranslate } from "@/utils/i18n";
 import { useGlobalStore, useUserStore } from "@/store/module";
 import * as api from "@/helpers/api";
 import { absolutifyLink } from "@/helpers/utils";
@@ -11,7 +11,7 @@ import AppearanceSelect from "@/components/AppearanceSelect";
 import LocaleSelect from "@/components/LocaleSelect";
 
 const Auth = () => {
-  const { t } = useTranslation();
+  const t = useTranslate();
   const globalStore = useGlobalStore();
   const userStore = useUserStore();
   const actionBtnLoadingState = useLoading(false);
@@ -104,11 +104,11 @@ const Auth = () => {
       if (user) {
         window.location.href = "/";
       } else {
-        toast.error(t("common.signup-failed"));
+        toast.error(t("message.signup-failed"));
       }
     } catch (error: any) {
       console.error(error);
-      toast.error(error.response.data.message || error.message || t("common.signup-failed"));
+      toast.error(error.response.data.message || error.message || t("message.signup-failed"));
     }
     actionBtnLoadingState.setFinish();
   };

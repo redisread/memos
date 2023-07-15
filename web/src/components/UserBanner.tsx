@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useTranslate } from "@/utils/i18n";
 import { useNavigate } from "react-router-dom";
 import { useGlobalStore, useUserStore } from "@/store/module";
 import Dropdown from "./kit/Dropdown";
@@ -8,7 +8,7 @@ import UserAvatar from "./UserAvatar";
 import showAboutSiteDialog from "./AboutSiteDialog";
 
 const UserBanner = () => {
-  const { t } = useTranslation();
+  const t = useTranslate();
   const navigate = useNavigate();
   const globalStore = useGlobalStore();
   const userStore = useUserStore();
@@ -40,7 +40,7 @@ const UserBanner = () => {
       <Dropdown
         className="w-full"
         trigger={
-          <div className="px-4 py-2 max-w-full flex flex-row justify-start items-center cursor-pointer rounded-full hover:shadow hover:bg-white dark:hover:bg-zinc-700">
+          <div className="px-4 py-2 max-w-full flex flex-row justify-start items-center cursor-pointer rounded-lg hover:shadow hover:bg-white dark:hover:bg-zinc-700">
             <UserAvatar avatarUrl={user?.avatarUrl} />
             <span className="px-1 text-lg font-medium text-slate-800 dark:text-gray-200 shrink truncate">
               {userStore.isVisitorMode() ? systemStatus.customizedProfile.name : username}
