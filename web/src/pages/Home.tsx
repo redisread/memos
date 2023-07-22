@@ -8,21 +8,21 @@ import MemoList from "@/components/MemoList";
 import MobileHeader from "@/components/MobileHeader";
 import HomeSidebar from "@/components/HomeSidebar";
 
-function Home() {
+const Home = () => {
   const t = useTranslate();
   const globalStore = useGlobalStore();
   const userStore = useUserStore();
   const user = userStore.state.user;
 
   useEffect(() => {
-    const currentUserId = userStore.getCurrentUserId();
-    userStore.getUserById(currentUserId).then((user) => {
+    const currentUsername = userStore.getCurrentUsername();
+    userStore.getUserByUsername(currentUsername).then((user) => {
       if (!user) {
         toast.error(t("message.user-not-found"));
         return;
       }
     });
-  }, [userStore.getCurrentUserId()]);
+  }, [userStore.getCurrentUsername()]);
 
   useEffect(() => {
     if (user?.setting.locale) {
@@ -43,6 +43,6 @@ function Home() {
       <HomeSidebar />
     </div>
   );
-}
+};
 
 export default Home;

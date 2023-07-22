@@ -1,7 +1,7 @@
 {
   "common": {
     "memos-slogan": "軽いセルフホスティング型のメモ帳。オープンソースで永久に無料です。",
-    "about": "Notesについて",
+    "about": "About",
     "home": "ホーム",
     "resources": "ファイル",
     "settings": "設定",
@@ -126,6 +126,7 @@
     "upload-successfully": "アップロードされました",
     "file-drag-drop-prompt": "アップロードするファイルをドラックアンドドロップする",
     "search-bar-placeholder": "ファイルを検索する",
+    "clear": "Clear",
     "create-dialog": {
       "title": "ファイルをアップロード",
       "upload-method": "アップロード方法",
