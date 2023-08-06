@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/usememos/memos/api/auth"
 	"github.com/usememos/memos/store"
 )
 
@@ -19,6 +20,8 @@ const (
 	SystemSettingSecretSessionName SystemSettingName = "secret-session"
 	// SystemSettingAllowSignUpName is the name of allow signup setting.
 	SystemSettingAllowSignUpName SystemSettingName = "allow-signup"
+	// SystemSettingDisablePasswordLoginName is the name of disable password login setting.
+	SystemSettingDisablePasswordLoginName SystemSettingName = "disable-password-login"
 	// SystemSettingDisablePublicMemosName is the name of disable public memos setting.
 	SystemSettingDisablePublicMemosName SystemSettingName = "disable-public-memos"
 	// SystemSettingMaxUploadSizeMiBName is the name of max upload size setting.
@@ -37,8 +40,6 @@ const (
 	SystemSettingTelegramBotTokenName SystemSettingName = "telegram-bot-token"
 	// SystemSettingMemoDisplayWithUpdatedTsName is the name of memo display with updated ts.
 	SystemSettingMemoDisplayWithUpdatedTsName SystemSettingName = "memo-display-with-updated-ts"
-	// SystemSettingOpenAIConfigName is the name of OpenAI config.
-	SystemSettingOpenAIConfigName SystemSettingName = "openai-config"
 	// SystemSettingAutoBackupIntervalName is the name of auto backup interval as seconds.
 	SystemSettingAutoBackupIntervalName SystemSettingName = "auto-backup-interval"
 )
@@ -70,11 +71,6 @@ type SystemSetting struct {
 	Description string `json:"description"`
 }
 
-type OpenAIConfig struct {
-	Key  string `json:"key"`
-	Host string `json:"host"`
-}
-
 type UpsertSystemSettingRequest struct {
 	Name        SystemSettingName `json:"name"`
 	Value       string            `json:"value"`
@@ -88,6 +84,11 @@ func (upsert UpsertSystemSettingRequest) Validate() error {
 	case SystemSettingServerIDName:
 		return fmt.Errorf("updating %v is not allowed", settingName)
 	case SystemSettingAllowSignUpName:
+		var value bool
+		if err := json.Unmarshal([]byte(upsert.Value), &value); err != nil {
+			return fmt.Errorf(systemSettingUnmarshalError, settingName)
+		}
+	case SystemSettingDisablePasswordLoginName:
 		var value bool
 		if err := json.Unmarshal([]byte(upsert.Value), &value); err != nil {
 			return fmt.Errorf(systemSettingUnmarshalError, settingName)
@@ -136,11 +137,6 @@ func (upsert UpsertSystemSettingRequest) Validate() error {
 		if err := json.Unmarshal([]byte(upsert.Value), &value); err != nil {
 			return fmt.Errorf(systemSettingUnmarshalError, settingName)
 		}
-	case SystemSettingOpenAIConfigName:
-		value := OpenAIConfig{}
-		if err := json.Unmarshal([]byte(upsert.Value), &value); err != nil {
-			return fmt.Errorf(systemSettingUnmarshalError, settingName)
-		}
 	case SystemSettingAutoBackupIntervalName:
 		var value int
 		if err := json.Unmarshal([]byte(upsert.Value), &value); err != nil {
@@ -179,7 +175,7 @@ func (upsert UpsertSystemSettingRequest) Validate() error {
 func (s *APIV1Service) registerSystemSettingRoutes(g *echo.Group) {
 	g.POST("/system/setting", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}
@@ -201,6 +197,20 @@ func (s *APIV1Service) registerSystemSettingRoutes(g *echo.Group) {
 		if err := systemSettingUpsert.Validate(); err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid system setting").SetInternal(err)
 		}
+		if systemSettingUpsert.Name == SystemSettingDisablePasswordLoginName {
+			var disablePasswordLogin bool
+			if err := json.Unmarshal([]byte(systemSettingUpsert.Value), &disablePasswordLogin); err != nil {
+				return echo.NewHTTPError(http.StatusBadRequest, "invalid system setting").SetInternal(err)
+			}
+
+			identityProviderList, err := s.Store.ListIdentityProviders(ctx, &store.FindIdentityProvider{})
+			if err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to upsert system setting").SetInternal(err)
+			}
+			if disablePasswordLogin && len(identityProviderList) == 0 {
+				return echo.NewHTTPError(http.StatusForbidden, "Cannot disable passwords if no SSO identity provider is configured.")
+			}
+		}
 
 		systemSetting, err := s.Store.UpsertSystemSetting(ctx, &store.SystemSetting{
 			Name:        systemSettingUpsert.Name.String(),
@@ -215,7 +225,7 @@ func (s *APIV1Service) registerSystemSettingRoutes(g *echo.Group) {
 
 	g.GET("/system/setting", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}

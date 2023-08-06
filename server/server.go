@@ -4,19 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
 	apiv1 "github.com/usememos/memos/api/v1"
+	apiv2 "github.com/usememos/memos/api/v2"
+	"github.com/usememos/memos/common/log"
 	"github.com/usememos/memos/common/util"
 	"github.com/usememos/memos/plugin/telegram"
 	"github.com/usememos/memos/server/profile"
 	"github.com/usememos/memos/store"
-
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"go.uber.org/zap"
 )
 
 type Server struct {
@@ -27,7 +30,12 @@ type Server struct {
 	Profile *profile.Profile
 	Store   *store.Store
 
-	telegramBot *telegram.Bot
+	// API services.
+	apiV2Service *apiv2.APIV2Service
+
+	// Asynchronous runners.
+	backupRunner *BackupRunner
+	telegramBot  *telegram.Bot
 }
 
 func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store) (*Server, error) {
@@ -40,10 +48,11 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 		e:       e,
 		Store:   store,
 		Profile: profile,
-	}
 
-	telegramBotHandler := newTelegramHandler(store)
-	s.telegramBot = telegram.NewBotWithHandler(telegramBotHandler)
+		// Asynchronous runners.
+		backupRunner: NewBackupRunner(store),
+		telegramBot:  telegram.NewBotWithHandler(newTelegramHandler(store)),
+	}
 
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
 		Format: `{"time":"${time_rfc3339}",` +
@@ -64,11 +73,6 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 	}))
 
 	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
-		Skipper: func(c echo.Context) bool {
-			// this is a hack to skip timeout for openai chat streaming
-			// because streaming require to flush response. But the timeout middleware will break it.
-			return c.Request().URL.Path == "/api/v1/openai/chat-streaming"
-		},
 		ErrorMessage: "Request timeout",
 		Timeout:      30 * time.Second,
 	}))
@@ -94,6 +98,12 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store)
 	apiV1Service.Register(rootGroup)
 
+	s.apiV2Service = apiv2.NewAPIV2Service(s.Secret, profile, store, s.Profile.Port+1)
+	// Register gRPC gateway as api v2.
+	if err := s.apiV2Service.RegisterGateway(ctx, e); err != nil {
+		return nil, fmt.Errorf("failed to register gRPC gateway: %w", err)
+	}
+
 	return s, nil
 }
 
@@ -103,7 +113,18 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	go s.telegramBot.Start(ctx)
-	go autoBackup(ctx, s.Store)
+	go s.backupRunner.Run(ctx)
+
+	// Start gRPC server.
+	listen, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Profile.Port+1))
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := s.apiV2Service.GetGRPCServer().Serve(listen); err != nil {
+			log.Error("grpc server listen error", zap.Error(err))
+		}
+	}()
 
 	return s.e.Start(fmt.Sprintf(":%d", s.Profile.Port))
 }
@@ -193,6 +214,6 @@ func defaultGetRequestSkipper(c echo.Context) bool {
 }
 
 func defaultAPIRequestSkipper(c echo.Context) bool {
-	path := c.Path()
-	return util.HasPrefixes(path, "/api", "/api/v1")
+	path := c.Request().URL.Path
+	return util.HasPrefixes(path, "/api", "/api/v1", "api/v2")
 }

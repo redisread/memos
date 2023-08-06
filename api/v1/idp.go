@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/labstack/echo/v4"
+	"github.com/usememos/memos/api/auth"
+	"github.com/usememos/memos/common/util"
 	"github.com/usememos/memos/store"
 )
 
@@ -41,7 +42,7 @@ type FieldMapping struct {
 }
 
 type IdentityProvider struct {
-	ID               int                     `json:"id"`
+	ID               int32                   `json:"id"`
 	Name             string                  `json:"name"`
 	Type             IdentityProviderType    `json:"type"`
 	IdentifierFilter string                  `json:"identifierFilter"`
@@ -56,7 +57,7 @@ type CreateIdentityProviderRequest struct {
 }
 
 type UpdateIdentityProviderRequest struct {
-	ID               int                     `json:"-"`
+	ID               int32                   `json:"-"`
 	Type             IdentityProviderType    `json:"type"`
 	Name             *string                 `json:"name"`
 	IdentifierFilter *string                 `json:"identifierFilter"`
@@ -66,7 +67,7 @@ type UpdateIdentityProviderRequest struct {
 func (s *APIV1Service) registerIdentityProviderRoutes(g *echo.Group) {
 	g.POST("/idp", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}
@@ -100,7 +101,7 @@ func (s *APIV1Service) registerIdentityProviderRoutes(g *echo.Group) {
 
 	g.PATCH("/idp/:idpId", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}
@@ -115,7 +116,7 @@ func (s *APIV1Service) registerIdentityProviderRoutes(g *echo.Group) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 		}
 
-		identityProviderID, err := strconv.Atoi(c.Param("idpId"))
+		identityProviderID, err := util.ConvertStringToInt32(c.Param("idpId"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("ID is not a number: %s", c.Param("idpId"))).SetInternal(err)
 		}
@@ -147,7 +148,7 @@ func (s *APIV1Service) registerIdentityProviderRoutes(g *echo.Group) {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to find identity provider list").SetInternal(err)
 		}
 
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		isHostUser := false
 		if ok {
 			user, err := s.Store.GetUser(ctx, &store.FindUser{
@@ -175,7 +176,7 @@ func (s *APIV1Service) registerIdentityProviderRoutes(g *echo.Group) {
 
 	g.GET("/idp/:idpId", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}
@@ -190,7 +191,7 @@ func (s *APIV1Service) registerIdentityProviderRoutes(g *echo.Group) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 		}
 
-		identityProviderID, err := strconv.Atoi(c.Param("idpId"))
+		identityProviderID, err := util.ConvertStringToInt32(c.Param("idpId"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("ID is not a number: %s", c.Param("idpId"))).SetInternal(err)
 		}
@@ -209,7 +210,7 @@ func (s *APIV1Service) registerIdentityProviderRoutes(g *echo.Group) {
 
 	g.DELETE("/idp/:idpId", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}
@@ -224,7 +225,7 @@ func (s *APIV1Service) registerIdentityProviderRoutes(g *echo.Group) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 		}
 
-		identityProviderID, err := strconv.Atoi(c.Param("idpId"))
+		identityProviderID, err := util.ConvertStringToInt32(c.Param("idpId"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("ID is not a number: %s", c.Param("idpId"))).SetInternal(err)
 		}

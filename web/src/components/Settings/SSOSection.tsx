@@ -1,15 +1,25 @@
 import { Divider } from "@mui/joy";
 import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { useTranslate } from "@/utils/i18n";
 import * as api from "@/helpers/api";
+import { useGlobalStore } from "@/store/module";
+import { useTranslate } from "@/utils/i18n";
 import showCreateIdentityProviderDialog from "../CreateIdentityProviderDialog";
-import Dropdown from "../kit/Dropdown";
 import { showCommonDialog } from "../Dialog/CommonDialog";
 import LearnMore from "../LearnMore";
+import Dropdown from "../kit/Dropdown";
+
+interface State {
+  disablePasswordLogin: boolean;
+}
 
 const SSOSection = () => {
   const t = useTranslate();
+  const globalStore = useGlobalStore();
+  const systemStatus = globalStore.state.systemStatus;
+  const [state] = useState<State>({
+    disablePasswordLogin: systemStatus.disablePasswordLogin,
+  });
   const [identityProviderList, setIdentityProviderList] = useState<IdentityProvider[]>([]);
 
   useEffect(() => {
@@ -22,9 +32,15 @@ const SSOSection = () => {
   };
 
   const handleDeleteIdentityProvider = async (identityProvider: IdentityProvider) => {
+    let content = t("setting.sso-section.confirm-delete", { name: identityProvider.name });
+
+    if (state.disablePasswordLogin) {
+      content += "\n\n" + t("setting.sso-section.disabled-password-login-warning");
+    }
+
     showCommonDialog({
       title: t("setting.sso-section.delete-sso"),
-      content: t("setting.sso-section.confirm-delete", { name: identityProvider.name }),
+      content: content,
       style: "warning",
       dialogName: "delete-identity-provider-dialog",
       onConfirm: async () => {

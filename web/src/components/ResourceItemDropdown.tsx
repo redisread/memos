@@ -1,14 +1,14 @@
 import copy from "copy-to-clipboard";
 import React from "react";
 import toast from "react-hot-toast";
-import { useTranslate } from "@/utils/i18n";
 import { useResourceStore } from "@/store/module";
-import { getResourceUrl } from "@/utils/resource";
-import Dropdown from "./kit/Dropdown";
-import Icon from "./Icon";
-import { showCommonDialog } from "./Dialog/CommonDialog";
+import { useTranslate } from "@/utils/i18n";
+import { getResourceType, getResourceUrl } from "@/utils/resource";
 import showChangeResourceFilenameDialog from "./ChangeResourceFilenameDialog";
+import { showCommonDialog } from "./Dialog/CommonDialog";
+import Icon from "./Icon";
 import showPreviewImageDialog from "./PreviewImageDialog";
+import Dropdown from "./kit/Dropdown";
 
 interface Props {
   resource: Resource;
@@ -20,7 +20,7 @@ const ResourceItemDropdown = ({ resource }: Props) => {
 
   const handlePreviewBtnClick = (resource: Resource) => {
     const resourceUrl = getResourceUrl(resource);
-    if (resource.type.startsWith("image")) {
+    if (getResourceType(resource).startsWith("image")) {
       showPreviewImageDialog([getResourceUrl(resource)], 0);
     } else {
       window.open(resourceUrl);

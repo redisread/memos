@@ -10,6 +10,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
+	"github.com/usememos/memos/api/auth"
+	"github.com/usememos/memos/common/util"
 	"github.com/usememos/memos/store"
 )
 
@@ -38,11 +40,11 @@ func (v Visibility) String() string {
 }
 
 type Memo struct {
-	ID int `json:"id"`
+	ID int32 `json:"id"`
 
 	// Standard fields
 	RowStatus RowStatus `json:"rowStatus"`
-	CreatorID int       `json:"creatorId"`
+	CreatorID int32     `json:"creatorId"`
 	CreatedTs int64     `json:"createdTs"`
 	UpdatedTs int64     `json:"updatedTs"`
 
@@ -61,7 +63,7 @@ type Memo struct {
 
 type CreateMemoRequest struct {
 	// Standard fields
-	CreatorID int    `json:"-"`
+	CreatorID int32  `json:"-"`
 	CreatedTs *int64 `json:"createdTs"`
 
 	// Domain specific fields
@@ -69,12 +71,12 @@ type CreateMemoRequest struct {
 	Content    string     `json:"content"`
 
 	// Related fields
-	ResourceIDList []int                        `json:"resourceIdList"`
+	ResourceIDList []int32                      `json:"resourceIdList"`
 	RelationList   []*UpsertMemoRelationRequest `json:"relationList"`
 }
 
 type PatchMemoRequest struct {
-	ID int `json:"-"`
+	ID int32 `json:"-"`
 
 	// Standard fields
 	CreatedTs *int64 `json:"createdTs"`
@@ -86,16 +88,16 @@ type PatchMemoRequest struct {
 	Visibility *Visibility `json:"visibility"`
 
 	// Related fields
-	ResourceIDList []int                        `json:"resourceIdList"`
+	ResourceIDList []int32                      `json:"resourceIdList"`
 	RelationList   []*UpsertMemoRelationRequest `json:"relationList"`
 }
 
 type FindMemoRequest struct {
-	ID *int
+	ID *int32
 
 	// Standard fields
 	RowStatus *RowStatus
-	CreatorID *int
+	CreatorID *int32
 
 	// Domain specific fields
 	Pinned         *bool
@@ -113,7 +115,7 @@ const maxContentLength = 1 << 30
 func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 	g.POST("/memo", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}
@@ -224,12 +226,12 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 
 	g.PATCH("/memo/:memoId", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}
 
-		memoID, err := strconv.Atoi(c.Param("memoId"))
+		memoID, err := util.ConvertStringToInt32(c.Param("memoId"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("ID is not a number: %s", c.Param("memoId"))).SetInternal(err)
 		}
@@ -351,7 +353,7 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 	g.GET("/memo", func(c echo.Context) error {
 		ctx := c.Request().Context()
 		findMemoMessage := &store.FindMemo{}
-		if userID, err := strconv.Atoi(c.QueryParam("creatorId")); err == nil {
+		if userID, err := util.ConvertStringToInt32(c.QueryParam("creatorId")); err == nil {
 			findMemoMessage.CreatorID = &userID
 		}
 
@@ -362,7 +364,7 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 			}
 		}
 
-		currentUserID, ok := c.Get(getUserIDContextKey()).(int)
+		currentUserID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			// Anonymous use should only fetch PUBLIC memos with specified user
 			if findMemoMessage.CreatorID == nil {
@@ -434,7 +436,7 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 
 	g.GET("/memo/:memoId", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		memoID, err := strconv.Atoi(c.Param("memoId"))
+		memoID, err := util.ConvertStringToInt32(c.Param("memoId"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("ID is not a number: %s", c.Param("memoId"))).SetInternal(err)
 		}
@@ -449,7 +451,7 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 			return echo.NewHTTPError(http.StatusNotFound, fmt.Sprintf("Memo not found: %d", memoID))
 		}
 
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if memo.Visibility == store.Private {
 			if !ok || memo.CreatorID != userID {
 				return echo.NewHTTPError(http.StatusForbidden, "this memo is private only")
@@ -472,7 +474,7 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 		findMemoMessage := &store.FindMemo{
 			RowStatus: &normalStatus,
 		}
-		if creatorID, err := strconv.Atoi(c.QueryParam("creatorId")); err == nil {
+		if creatorID, err := util.ConvertStringToInt32(c.QueryParam("creatorId")); err == nil {
 			findMemoMessage.CreatorID = &creatorID
 		}
 
@@ -487,7 +489,7 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 			return echo.NewHTTPError(http.StatusBadRequest, "Missing user id to find memo")
 		}
 
-		currentUserID, ok := c.Get(getUserIDContextKey()).(int)
+		currentUserID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			findMemoMessage.VisibilityList = []store.Visibility{store.Public}
 		} else {
@@ -529,29 +531,12 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 	g.GET("/memo/all", func(c echo.Context) error {
 		ctx := c.Request().Context()
 		findMemoMessage := &store.FindMemo{}
-		_, ok := c.Get(getUserIDContextKey()).(int)
+		_, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			findMemoMessage.VisibilityList = []store.Visibility{store.Public}
 		} else {
 			findMemoMessage.VisibilityList = []store.Visibility{store.Public, store.Protected}
 		}
-
-		pinnedStr := c.QueryParam("pinned")
-		if pinnedStr != "" {
-			pinned := pinnedStr == "true"
-			findMemoMessage.Pinned = &pinned
-		}
-
-		contentSearch := []string{}
-		tag := c.QueryParam("tag")
-		if tag != "" {
-			contentSearch = append(contentSearch, "#"+tag+" ")
-		}
-		contentSlice := c.QueryParams()["content"]
-		if len(contentSlice) > 0 {
-			contentSearch = append(contentSearch, contentSlice...)
-		}
-		findMemoMessage.ContentSearch = contentSearch
 
 		if limit, err := strconv.Atoi(c.QueryParam("limit")); err == nil {
 			findMemoMessage.Limit = &limit
@@ -589,11 +574,11 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 
 	g.DELETE("/memo/:memoId", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}
-		memoID, err := strconv.Atoi(c.Param("memoId"))
+		memoID, err := util.ConvertStringToInt32(c.Param("memoId"))
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("ID is not a number: %s", c.Param("memoId"))).SetInternal(err)
 		}
@@ -756,12 +741,12 @@ func getMemoRelationListDiff(oldList, newList []*store.MemoRelation) (addedList,
 	return addedList, removedList
 }
 
-func getIDListDiff(oldList, newList []int) (addedList, removedList []int) {
-	oldMap := map[int]bool{}
+func getIDListDiff(oldList, newList []int32) (addedList, removedList []int32) {
+	oldMap := map[int32]bool{}
 	for _, id := range oldList {
 		oldMap[id] = true
 	}
-	newMap := map[int]bool{}
+	newMap := map[int32]bool{}
 	for _, id := range newList {
 		newMap[id] = true
 	}

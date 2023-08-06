@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/usememos/memos/api/auth"
 	"github.com/usememos/memos/common/log"
 	"github.com/usememos/memos/server/profile"
 	"github.com/usememos/memos/store"
@@ -19,6 +20,8 @@ type SystemStatus struct {
 	// System settings
 	// Allow sign up.
 	AllowSignUp bool `json:"allowSignUp"`
+	// Disable password login.
+	DisablePasswordLogin bool `json:"disablePasswordLogin"`
 	// Disable public memos.
 	DisablePublicMemos bool `json:"disablePublicMemos"`
 	// Max upload size.
@@ -32,7 +35,7 @@ type SystemStatus struct {
 	// Customized server profile, including server name and external url.
 	CustomizedProfile CustomizedProfile `json:"customizedProfile"`
 	// Storage service ID.
-	StorageServiceID int `json:"storageServiceId"`
+	StorageServiceID int32 `json:"storageServiceId"`
 	// Local storage path.
 	LocalStoragePath string `json:"localStoragePath"`
 	// Memo display with updated timestamp.
@@ -48,14 +51,15 @@ func (s *APIV1Service) registerSystemRoutes(g *echo.Group) {
 		ctx := c.Request().Context()
 
 		systemStatus := SystemStatus{
-			Profile:            *s.Profile,
-			DBSize:             0,
-			AllowSignUp:        false,
-			DisablePublicMemos: false,
-			MaxUploadSizeMiB:   32,
-			AutoBackupInterval: 0,
-			AdditionalStyle:    "",
-			AdditionalScript:   "",
+			Profile:              *s.Profile,
+			DBSize:               0,
+			AllowSignUp:          false,
+			DisablePasswordLogin: false,
+			DisablePublicMemos:   false,
+			MaxUploadSizeMiB:     32,
+			AutoBackupInterval:   0,
+			AdditionalStyle:      "",
+			AdditionalScript:     "",
 			CustomizedProfile: CustomizedProfile{
 				Name:        "memos",
 				LogoURL:     "",
@@ -78,10 +82,6 @@ func (s *APIV1Service) registerSystemRoutes(g *echo.Group) {
 		}
 		if hostUser != nil {
 			systemStatus.Host = &User{ID: hostUser.ID}
-			// data desensitize
-			systemStatus.Host.OpenID = ""
-			systemStatus.Host.Email = ""
-			systemStatus.Host.AvatarURL = ""
 		}
 
 		systemSettingList, err := s.Store.ListSystemSettings(ctx, &store.FindSystemSetting{})
@@ -103,6 +103,8 @@ func (s *APIV1Service) registerSystemRoutes(g *echo.Group) {
 			switch systemSetting.Name {
 			case SystemSettingAllowSignUpName.String():
 				systemStatus.AllowSignUp = baseValue.(bool)
+			case SystemSettingDisablePasswordLoginName.String():
+				systemStatus.DisablePasswordLogin = baseValue.(bool)
 			case SystemSettingDisablePublicMemosName.String():
 				systemStatus.DisablePublicMemos = baseValue.(bool)
 			case SystemSettingMaxUploadSizeMiBName.String():
@@ -120,7 +122,7 @@ func (s *APIV1Service) registerSystemRoutes(g *echo.Group) {
 				}
 				systemStatus.CustomizedProfile = customizedProfile
 			case SystemSettingStorageServiceIDName.String():
-				systemStatus.StorageServiceID = int(baseValue.(float64))
+				systemStatus.StorageServiceID = int32(baseValue.(float64))
 			case SystemSettingLocalStoragePathName.String():
 				systemStatus.LocalStoragePath = baseValue.(string)
 			case SystemSettingMemoDisplayWithUpdatedTsName.String():
@@ -135,7 +137,7 @@ func (s *APIV1Service) registerSystemRoutes(g *echo.Group) {
 
 	g.POST("/system/vacuum", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		userID, ok := c.Get(getUserIDContextKey()).(int)
+		userID, ok := c.Get(auth.UserIDContextKey).(int32)
 		if !ok {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Missing user in session")
 		}

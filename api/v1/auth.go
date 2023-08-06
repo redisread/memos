@@ -8,7 +8,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
-	"github.com/usememos/memos/api/v1/auth"
 	"github.com/usememos/memos/common/util"
 	"github.com/usememos/memos/plugin/idp"
 	"github.com/usememos/memos/plugin/idp/oauth2"
@@ -22,7 +21,7 @@ type SignIn struct {
 }
 
 type SSOSignIn struct {
-	IdentityProviderID int    `json:"identityProviderId"`
+	IdentityProviderID int32  `json:"identityProviderId"`
 	Code               string `json:"code"`
 	RedirectURI        string `json:"redirectUri"`
 }
@@ -37,6 +36,24 @@ func (s *APIV1Service) registerAuthRoutes(g *echo.Group) {
 	g.POST("/auth/signin", func(c echo.Context) error {
 		ctx := c.Request().Context()
 		signin := &SignIn{}
+
+		disablePasswordLoginSystemSetting, err := s.Store.GetSystemSetting(ctx, &store.FindSystemSetting{
+			Name: SystemSettingDisablePasswordLoginName.String(),
+		})
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to find system setting").SetInternal(err)
+		}
+		if disablePasswordLoginSystemSetting != nil {
+			disablePasswordLogin := false
+			err = json.Unmarshal([]byte(disablePasswordLoginSystemSetting.Value), &disablePasswordLogin)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to unmarshal system setting").SetInternal(err)
+			}
+			if disablePasswordLogin {
+				return echo.NewHTTPError(http.StatusUnauthorized, "Password login is deactivated")
+			}
+		}
+
 		if err := json.NewDecoder(c.Request().Body).Decode(signin); err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, "Malformatted signin request").SetInternal(err)
 		}
@@ -59,7 +76,7 @@ func (s *APIV1Service) registerAuthRoutes(g *echo.Group) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Incorrect login credentials, please try again")
 		}
 
-		if err := auth.GenerateTokensAndSetCookies(c, user, s.Secret); err != nil {
+		if err := GenerateTokensAndSetCookies(c, user, s.Secret); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate tokens").SetInternal(err)
 		}
 		if err := s.createAuthSignInActivity(c, user); err != nil {
@@ -147,7 +164,7 @@ func (s *APIV1Service) registerAuthRoutes(g *echo.Group) {
 			return echo.NewHTTPError(http.StatusForbidden, fmt.Sprintf("User has been archived with username %s", userInfo.Identifier))
 		}
 
-		if err := auth.GenerateTokensAndSetCookies(c, user, s.Secret); err != nil {
+		if err := GenerateTokensAndSetCookies(c, user, s.Secret); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate tokens").SetInternal(err)
 		}
 		if err := s.createAuthSignInActivity(c, user); err != nil {
@@ -213,7 +230,7 @@ func (s *APIV1Service) registerAuthRoutes(g *echo.Group) {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create user").SetInternal(err)
 		}
-		if err := auth.GenerateTokensAndSetCookies(c, user, s.Secret); err != nil {
+		if err := GenerateTokensAndSetCookies(c, user, s.Secret); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate tokens").SetInternal(err)
 		}
 		if err := s.createAuthSignUpActivity(c, user); err != nil {
@@ -226,7 +243,7 @@ func (s *APIV1Service) registerAuthRoutes(g *echo.Group) {
 
 	// POST /auth/signout - Sign out.
 	g.POST("/auth/signout", func(c echo.Context) error {
-		auth.RemoveTokensAndCookies(c)
+		RemoveTokensAndCookies(c)
 		return c.JSON(http.StatusOK, true)
 	})
 }

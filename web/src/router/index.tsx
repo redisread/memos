@@ -1,12 +1,12 @@
-import { createBrowserRouter, redirect } from "react-router-dom";
 import { lazy } from "react";
+import { createBrowserRouter, redirect } from "react-router-dom";
 import { isNullorUndefined } from "@/helpers/utils";
-import store from "@/store";
-import { initialGlobalState, initialUserState } from "@/store/module";
+import Archived from "@/pages/Archived";
 import DailyReview from "@/pages/DailyReview";
 import ResourcesDashboard from "@/pages/ResourcesDashboard";
 import Setting from "@/pages/Setting";
-import Archived from "@/pages/Archived";
+import store from "@/store";
+import { initialGlobalState, initialUserState } from "@/store/module";
 
 const Root = lazy(() => import("@/layouts/Root"));
 const Auth = lazy(() => import("@/pages/Auth"));
@@ -16,7 +16,6 @@ const Home = lazy(() => import("@/pages/Home"));
 const MemoDetail = lazy(() => import("@/pages/MemoDetail"));
 const EmbedMemo = lazy(() => import("@/pages/EmbedMemo"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
-const MemoChat = lazy(() => import("@/pages/MemoChat"));
 
 const initialGlobalStateLoader = (() => {
   let done = false;
@@ -162,27 +161,6 @@ const router = createBrowserRouter([
           return null;
         },
       },
-      {
-        path: "memo-chat",
-        element: <MemoChat />,
-        loader: async () => {
-          await initialGlobalStateLoader();
-
-          try {
-            await initialUserState();
-          } catch (error) {
-            // do nth
-          }
-
-          const { user } = store.getState().user;
-
-          if (isNullorUndefined(user)) {
-            return redirect("/auth");
-          }
-          return null;
-        },
-      },
-
       {
         path: "archived",
         element: <Archived />,
