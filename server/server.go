@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/pkg/errors"
+	echoSwagger "github.com/swaggo/echo-swagger"
 	apiv1 "github.com/usememos/memos/api/v1"
 	apiv2 "github.com/usememos/memos/api/v2"
 	"github.com/usememos/memos/common/log"
@@ -38,6 +39,25 @@ type Server struct {
 	telegramBot  *telegram.Bot
 }
 
+// @title						memos API
+// @version					1.0
+// @description				A privacy-first, lightweight note-taking service.
+//
+// @contact.name				API Support
+// @contact.url				https://github.com/orgs/usememos/discussions
+//
+// @license.name				MIT License
+// @license.url				https://github.com/usememos/memos/blob/main/LICENSE
+//
+// @BasePath					/
+//
+// @externalDocs.url			https://usememos.com/
+// @externalDocs.description	Find out more about Memos
+//
+// @securitydefinitions.apikey	ApiKeyAuth
+// @in							query
+// @name						openId
+// @description				Insert your Open ID API Key here.
 func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store) (*Server, error) {
 	e := echo.New()
 	e.Debug = true
@@ -85,6 +105,9 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 
 	embedFrontend(e)
 
+	// This will serve Swagger UI at /api/index.html and Swagger 2.0 spec at /api/doc.json
+	e.GET("/api/*", echoSwagger.WrapHandler)
+
 	secret := "usememos"
 	if profile.Mode == "prod" {
 		secret, err = s.getSystemSecretSessionName(ctx)
@@ -125,6 +148,9 @@ func (s *Server) Start(ctx context.Context) error {
 			log.Error("grpc server listen error", zap.Error(err))
 		}
 	}()
+
+	// programmatically set API version same as the server version
+	apiv1.SwaggerInfo.Version = s.Profile.Version
 
 	return s.e.Start(fmt.Sprintf(":%d", s.Profile.Port))
 }
