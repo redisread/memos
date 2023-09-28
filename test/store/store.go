@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/usememos/memos/store"
-	"github.com/usememos/memos/store/db"
+	"github.com/usememos/memos/store/sqlite"
 	"github.com/usememos/memos/test"
 
 	// sqlite driver.
@@ -15,11 +15,14 @@ import (
 
 func NewTestingStore(ctx context.Context, t *testing.T) *store.Store {
 	profile := test.GetTestingProfile(t)
-	db := db.NewDB(profile)
-	if err := db.Open(ctx); err != nil {
-		fmt.Printf("failed to open db, error: %+v\n", err)
+	driver, err := sqlite.NewDriver(profile)
+	if err != nil {
+		fmt.Printf("failed to create db driver, error: %+v\n", err)
+	}
+	if err := driver.Migrate(ctx); err != nil {
+		fmt.Printf("failed to migrate db, error: %+v\n", err)
 	}
 
-	store := store.New(db.DBInstance, profile)
+	store := store.New(driver, profile)
 	return store
 }

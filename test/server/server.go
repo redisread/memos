@@ -11,15 +11,15 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	// sqlite driver.
+	_ "modernc.org/sqlite"
+
 	"github.com/usememos/memos/api/auth"
 	"github.com/usememos/memos/server"
 	"github.com/usememos/memos/server/profile"
 	"github.com/usememos/memos/store"
-	"github.com/usememos/memos/store/db"
+	"github.com/usememos/memos/store/sqlite"
 	"github.com/usememos/memos/test"
-
-	// sqlite driver.
-	_ "modernc.org/sqlite"
 )
 
 type TestingServer struct {
@@ -31,12 +31,15 @@ type TestingServer struct {
 
 func NewTestingServer(ctx context.Context, t *testing.T) (*TestingServer, error) {
 	profile := test.GetTestingProfile(t)
-	db := db.NewDB(profile)
-	if err := db.Open(ctx); err != nil {
-		return nil, errors.Wrap(err, "failed to open db")
+	driver, err := sqlite.NewDriver(profile)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create db driver")
+	}
+	if err := driver.Migrate(ctx); err != nil {
+		return nil, errors.Wrap(err, "failed to migrate db")
 	}
 
-	store := store.New(db.DBInstance, profile)
+	store := store.New(driver, profile)
 	server, err := server.NewServer(ctx, profile, store)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create server")

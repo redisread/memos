@@ -10,12 +10,13 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
+
 	"github.com/usememos/memos/common/log"
 	"github.com/usememos/memos/server"
 	_profile "github.com/usememos/memos/server/profile"
 	"github.com/usememos/memos/store"
-	"github.com/usememos/memos/store/db"
-	"go.uber.org/zap"
+	"github.com/usememos/memos/store/sqlite"
 )
 
 const (
@@ -32,6 +33,7 @@ const (
 var (
 	profile *_profile.Profile
 	mode    string
+	addr    string
 	port    int
 	data    string
 
@@ -40,14 +42,19 @@ var (
 		Short: `An open-source, self-hosted memo hub with knowledge management and social networking.`,
 		Run: func(_cmd *cobra.Command, _args []string) {
 			ctx, cancel := context.WithCancel(context.Background())
-			db := db.NewDB(profile)
-			if err := db.Open(ctx); err != nil {
+			driver, err := sqlite.NewDriver(profile)
+			if err != nil {
 				cancel()
-				log.Error("failed to open db", zap.Error(err))
+				log.Error("failed to create db driver", zap.Error(err))
+				return
+			}
+			if err := driver.Migrate(ctx); err != nil {
+				cancel()
+				log.Error("failed to migrate db", zap.Error(err))
 				return
 			}
 
-			store := store.New(db.DBInstance, profile)
+			store := store.New(driver, profile)
 			s, err := server.NewServer(ctx, profile, store)
 			if err != nil {
 				cancel()
@@ -91,10 +98,15 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	rootCmd.PersistentFlags().StringVarP(&mode, "mode", "m", "demo", `mode of server, can be "prod" or "dev" or "demo"`)
+	rootCmd.PersistentFlags().StringVarP(&addr, "addr", "a", "", "address of server")
 	rootCmd.PersistentFlags().IntVarP(&port, "port", "p", 8081, "port of server")
 	rootCmd.PersistentFlags().StringVarP(&data, "data", "d", "", "data directory")
 
 	err := viper.BindPFlag("mode", rootCmd.PersistentFlags().Lookup("mode"))
+	if err != nil {
+		panic(err)
+	}
+	err = viper.BindPFlag("addr", rootCmd.PersistentFlags().Lookup("addr"))
 	if err != nil {
 		panic(err)
 	}
@@ -108,6 +120,7 @@ func init() {
 	}
 
 	viper.SetDefault("mode", "demo")
+	viper.SetDefault("addr", "")
 	viper.SetDefault("port", 8081)
 	viper.SetEnvPrefix("memos")
 }
@@ -124,6 +137,7 @@ func initConfig() {
 	println("---")
 	println("Server profile")
 	println("dsn:", profile.DSN)
+	println("addr:", profile.Addr)
 	println("port:", profile.Port)
 	println("mode:", profile.Mode)
 	println("version:", profile.Version)
@@ -131,11 +145,15 @@ func initConfig() {
 }
 
 func printGreetings() {
-	fmt.Print(greetingBanner)
-	fmt.Printf("Version %s has been started on port %d\n", profile.Version, profile.Port)
-	fmt.Println("---")
-	fmt.Println("See more in:")
+	print(greetingBanner)
+	if len(profile.Addr) == 0 {
+		fmt.Printf("Version %s has been started on port %d\n", profile.Version, profile.Port)
+	} else {
+		fmt.Printf("Version %s has been started on address '%s' and port %d\n", profile.Version, profile.Addr, profile.Port)
+	}
+	println("---")
+	println("See more in:")
 	fmt.Printf("👉Website: %s\n", "https://usememos.com")
 	fmt.Printf("👉GitHub: %s\n", "https://github.com/usememos/memos")
-	fmt.Println("---")
+	println("---")
 }

@@ -19,7 +19,7 @@ const PreferencesSection = () => {
   const visibilitySelectorItems = VISIBILITY_SELECTOR_ITEMS.map((item) => {
     return {
       value: item.value,
-      text: t(`memo.visibility.${item.text.toLowerCase() as Lowercase<typeof item.text>}`),
+      text: t(`memo.visibility.${item.value.toLowerCase() as Lowercase<typeof item.value>}`),
     };
   });
 
@@ -45,10 +45,6 @@ const PreferencesSection = () => {
 
   const handleDailyReviewTimeOffsetChanged = (value: number) => {
     userStore.upsertLocalSetting({ ...localSetting, dailyReviewTimeOffset: value });
-  };
-
-  const handleAutoCollapseChanged = (event: React.ChangeEvent<HTMLInputElement>) => {
-    userStore.upsertLocalSetting({ ...localSetting, enableAutoCollapse: event.target.checked });
   };
 
   const handleSaveTelegramUserId = async () => {
@@ -128,11 +124,6 @@ const PreferencesSection = () => {
       <label className="form-label selector">
         <span className="text-sm break-keep">{t("setting.preference-section.enable-double-click")}</span>
         <Switch className="ml-2" checked={localSetting.enableDoubleClickEditing} onChange={handleDoubleClickEnabledChanged} />
-      </label>
-
-      <label className="form-label selector">
-        <span className="normal-text">{t("setting.preference-section.auto-collapse")}</span>
-        <Switch className="ml-2" checked={localSetting.enableAutoCollapse} onChange={handleAutoCollapseChanged} />
       </label>
 
       <Divider className="!mt-3 !my-4" />

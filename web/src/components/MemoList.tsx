@@ -1,31 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
+import { useParams } from "react-router-dom";
 import { DEFAULT_MEMO_LIMIT } from "@/helpers/consts";
 import { getTimeStampByDate } from "@/helpers/datetime";
+import useCurrentUser from "@/hooks/useCurrentUser";
 import { TAG_REG } from "@/labs/marked/parser";
-import { useFilterStore, useMemoStore, useUserStore } from "@/store/module";
+import { useFilterStore, useMemoStore } from "@/store/module";
 import { useTranslate } from "@/utils/i18n";
 import Empty from "./Empty";
 import Memo from "./Memo";
 import "@/less/memo-list.less";
 
-interface Props {
-  showCreator?: boolean;
-}
-
-const MemoList: React.FC<Props> = (props: Props) => {
-  const { showCreator } = props;
+const MemoList: React.FC = () => {
   const t = useTranslate();
+  const params = useParams();
   const memoStore = useMemoStore();
-  const userStore = useUserStore();
   const filterStore = useFilterStore();
   const filter = filterStore.state;
-  const { memos, isFetching } = memoStore.state;
+  const { memos } = memoStore.state;
+  const [isFetching, setIsFetching] = useState<boolean>(true);
   const [isComplete, setIsComplete] = useState<boolean>(false);
-
-  const currentUsername = userStore.getCurrentUsername();
+  const user = useCurrentUser();
   const { tag: tagQuery, duration, text: textQuery, visibility } = filter;
   const showMemoFilter = Boolean(tagQuery || (duration && duration.from < duration.to) || textQuery || visibility);
+  const username = params.username || user?.username || "";
 
   const shownMemos = (
     showMemoFilter
@@ -65,7 +63,7 @@ const MemoList: React.FC<Props> = (props: Props) => {
           return shouldShow;
         })
       : memos
-  ).filter((memo) => memo.creatorUsername === currentUsername && memo.rowStatus === "NORMAL");
+  ).filter((memo) => memo.creatorUsername === username && memo.rowStatus === "NORMAL");
 
   const pinnedMemos = shownMemos.filter((m) => m.pinned);
   const unpinnedMemos = shownMemos.filter((m) => !m.pinned);
@@ -76,23 +74,22 @@ const MemoList: React.FC<Props> = (props: Props) => {
   unpinnedMemos.sort(memoSort);
   const sortedMemos = pinnedMemos.concat(unpinnedMemos).filter((m) => m.rowStatus === "NORMAL");
 
-  const statusRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     memoStore
-      .fetchMemos()
+      .fetchMemos(username)
       .then((fetchedMemos) => {
         if (fetchedMemos.length < DEFAULT_MEMO_LIMIT) {
           setIsComplete(true);
         } else {
           setIsComplete(false);
         }
+        setIsFetching(false);
       })
       .catch((error) => {
         console.error(error);
         toast.error(error.response.data.message);
       });
-  }, [currentUsername]);
+  }, [user?.username]);
 
   useEffect(() => {
     const pageWrapper = document.body.querySelector(".page-wrapper");
@@ -115,24 +112,18 @@ const MemoList: React.FC<Props> = (props: Props) => {
         observer.unobserve(entry.target);
       }
     });
-    if (statusRef?.current) {
-      observer.observe(statusRef.current);
-    }
-    return () => {
-      if (statusRef?.current) {
-        observer.unobserve(statusRef.current);
-      }
-    };
-  }, [isFetching, isComplete, filter, sortedMemos.length, statusRef]);
+  }, [isFetching, isComplete, filter, sortedMemos.length]);
 
   const handleFetchMoreClick = async () => {
     try {
-      const fetchedMemos = await memoStore.fetchMemos(DEFAULT_MEMO_LIMIT, memos.length);
+      setIsFetching(true);
+      const fetchedMemos = await memoStore.fetchMemos(username, DEFAULT_MEMO_LIMIT, memos.length);
       if (fetchedMemos.length < DEFAULT_MEMO_LIMIT) {
         setIsComplete(true);
       } else {
         setIsComplete(false);
       }
+      setIsFetching(false);
     } catch (error: any) {
       console.error(error);
       toast.error(error.response.data.message);
@@ -142,15 +133,15 @@ const MemoList: React.FC<Props> = (props: Props) => {
   return (
     <div className="memo-list-container">
       {sortedMemos.map((memo) => (
-        <Memo key={`${memo.id}-${memo.displayTs}`} memo={memo} lazyRendering showVisibility showCreator={showCreator} />
+        <Memo key={`${memo.id}-${memo.displayTs}`} memo={memo} lazyRendering showVisibility />
       ))}
       {isFetching ? (
         <div className="status-text-container fetching-tip">
           <p className="status-text">{t("memo.fetching-data")}</p>
         </div>
       ) : (
-        <div ref={statusRef} className="status-text-container">
-          <p className="status-text">
+        <div className="status-text-container">
+          <div className="status-text">
             {isComplete ? (
               sortedMemos.length === 0 && (
                 <div className="w-full mt-12 mb-8 flex flex-col justify-center items-center italic">
@@ -165,7 +156,7 @@ const MemoList: React.FC<Props> = (props: Props) => {
                 </span>
               </>
             )}
-          </p>
+          </div>
         </div>
       )}
     </div>
