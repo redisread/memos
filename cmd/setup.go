@@ -9,9 +9,9 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/usememos/memos/common/util"
+	"github.com/usememos/memos/internal/util"
 	"github.com/usememos/memos/store"
-	"github.com/usememos/memos/store/sqlite"
+	"github.com/usememos/memos/store/db/sqlite"
 )
 
 var (
@@ -36,7 +36,7 @@ var (
 				return
 			}
 
-			driver, err := sqlite.NewDriver(profile)
+			driver, err := sqlite.NewDB(profile)
 			if err != nil {
 				fmt.Printf("failed to create db driver, error: %+v\n", err)
 				return

@@ -12,8 +12,10 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 
-	"github.com/usememos/memos/common/log"
-	"github.com/usememos/memos/common/util"
+	"github.com/usememos/memos/internal/log"
+	"github.com/usememos/memos/internal/util"
+	storepb "github.com/usememos/memos/proto/gen/store"
+	"github.com/usememos/memos/server/service/metric"
 	"github.com/usememos/memos/store"
 )
 
@@ -57,6 +59,7 @@ type Memo struct {
 	Pinned     bool       `json:"pinned"`
 
 	// Related fields
+	Parent          *Memo           `json:"parent"`
 	CreatorName     string          `json:"creatorName"`
 	CreatorUsername string          `json:"creatorUsername"`
 	ResourceList    []*Resource     `json:"resourceList"`
@@ -143,7 +146,10 @@ func (s *APIV1Service) registerMemoRoutes(g *echo.Group) {
 //	@Router		/api/v1/memo [GET]
 func (s *APIV1Service) GetMemoList(c echo.Context) error {
 	ctx := c.Request().Context()
-	findMemoMessage := &store.FindMemo{}
+	hasParentFlag := false
+	findMemoMessage := &store.FindMemo{
+		HasParent: &hasParentFlag,
+	}
 	if userID, err := util.ConvertStringToInt32(c.QueryParam("creatorId")); err == nil {
 		findMemoMessage.CreatorID = &userID
 	}
@@ -189,9 +195,9 @@ func (s *APIV1Service) GetMemoList(c echo.Context) error {
 	if tag != "" {
 		contentSearch = append(contentSearch, "#"+tag)
 	}
-	contentSlice := c.QueryParams()["content"]
-	if len(contentSlice) > 0 {
-		contentSearch = append(contentSearch, contentSlice...)
+	content := c.QueryParam("content")
+	if content != "" {
+		contentSearch = append(contentSearch, content)
 	}
 	findMemoMessage.ContentSearch = contentSearch
 
@@ -314,9 +320,6 @@ func (s *APIV1Service) CreateMemo(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create memo").SetInternal(err)
 	}
-	if err := s.createMemoCreateActivity(ctx, memo); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create activity").SetInternal(err)
-	}
 
 	for _, resourceID := range createMemoRequest.ResourceIDList {
 		if _, err := s.Store.UpdateResource(ctx, &store.UpdateResource{
@@ -334,6 +337,41 @@ func (s *APIV1Service) CreateMemo(c echo.Context) error {
 			Type:          store.MemoRelationType(memoRelationUpsert.Type),
 		}); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to upsert memo relation").SetInternal(err)
+		}
+		if memo.Visibility != store.Private && memoRelationUpsert.Type == MemoRelationComment {
+			relatedMemo, err := s.Store.GetMemo(ctx, &store.FindMemo{
+				ID: &memoRelationUpsert.RelatedMemoID,
+			})
+			if err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get related memo").SetInternal(err)
+			}
+			if relatedMemo.CreatorID != memo.CreatorID {
+				activity, err := s.Store.CreateActivity(ctx, &store.Activity{
+					CreatorID: memo.CreatorID,
+					Type:      store.ActivityTypeMemoComment,
+					Level:     store.ActivityLevelInfo,
+					Payload: &storepb.ActivityPayload{
+						MemoComment: &storepb.ActivityMemoCommentPayload{
+							MemoId:        memo.ID,
+							RelatedMemoId: memoRelationUpsert.RelatedMemoID,
+						},
+					},
+				})
+				if err != nil {
+					return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create activity").SetInternal(err)
+				}
+				if _, err := s.Store.CreateInbox(ctx, &store.Inbox{
+					SenderID:   memo.CreatorID,
+					ReceiverID: relatedMemo.CreatorID,
+					Status:     store.UNREAD,
+					Message: &storepb.InboxMessage{
+						Type:       storepb.InboxMessage_TYPE_MEMO_COMMENT,
+						ActivityId: &activity.ID,
+					},
+				}); err != nil {
+					return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create inbox").SetInternal(err)
+				}
+			}
 		}
 	}
 
@@ -383,6 +421,7 @@ func (s *APIV1Service) CreateMemo(c echo.Context) error {
 			}
 		}
 	}
+	metric.Enqueue("memo create")
 	return c.JSON(http.StatusOK, memoResponse)
 }
 
@@ -403,7 +442,10 @@ func (s *APIV1Service) CreateMemo(c echo.Context) error {
 //	- creatorUsername is listed at ./web/src/helpers/api.ts:82, but it's not present here
 func (s *APIV1Service) GetAllMemos(c echo.Context) error {
 	ctx := c.Request().Context()
-	findMemoMessage := &store.FindMemo{}
+	hasParentFlag := false
+	findMemoMessage := &store.FindMemo{
+		HasParent: &hasParentFlag,
+	}
 	_, ok := c.Get(userIDContextKey).(int32)
 	if !ok {
 		findMemoMessage.VisibilityList = []store.Visibility{store.Public}
@@ -460,8 +502,11 @@ func (s *APIV1Service) GetAllMemos(c echo.Context) error {
 func (s *APIV1Service) GetMemoStats(c echo.Context) error {
 	ctx := c.Request().Context()
 	normalStatus := store.Normal
+	hasParentFlag := false
 	findMemoMessage := &store.FindMemo{
-		RowStatus: &normalStatus,
+		RowStatus:      &normalStatus,
+		HasParent:      &hasParentFlag,
+		ExcludeContent: true,
 	}
 	if creatorID, err := util.ConvertStringToInt32(c.QueryParam("creatorId")); err == nil {
 		findMemoMessage.CreatorID = &creatorID
@@ -751,27 +796,6 @@ func (s *APIV1Service) UpdateMemo(c echo.Context) error {
 	return c.JSON(http.StatusOK, memoResponse)
 }
 
-func (s *APIV1Service) createMemoCreateActivity(ctx context.Context, memo *store.Memo) error {
-	payload := ActivityMemoCreatePayload{
-		Content:    memo.Content,
-		Visibility: memo.Visibility.String(),
-	}
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return errors.Wrap(err, "failed to marshal activity payload")
-	}
-	activity, err := s.Store.CreateActivity(ctx, &store.Activity{
-		CreatorID: memo.CreatorID,
-		Type:      ActivityMemoCreate.String(),
-		Level:     ActivityInfo.String(),
-		Payload:   string(payloadBytes),
-	})
-	if err != nil || activity == nil {
-		return errors.Wrap(err, "failed to create activity")
-	}
-	return err
-}
-
 func (s *APIV1Service) convertMemoFromStore(ctx context.Context, memo *store.Memo) (*Memo, error) {
 	memoResponse := &Memo{
 		ID:         memo.ID,
@@ -825,6 +849,22 @@ func (s *APIV1Service) convertMemoFromStore(ctx context.Context, memo *store.Mem
 		}
 	}
 	memoResponse.ResourceList = resourceList
+
+	if memo.ParentID != nil {
+		parentMemo, err := s.Store.GetMemo(ctx, &store.FindMemo{
+			ID: memo.ParentID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if parentMemo != nil {
+			parent, err := s.convertMemoFromStore(ctx, parentMemo)
+			if err != nil {
+				return nil, err
+			}
+			memoResponse.Parent = parent
+		}
+	}
 
 	return memoResponse, nil
 }

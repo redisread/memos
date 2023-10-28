@@ -1,37 +1,32 @@
 import { lazy } from "react";
 import { createBrowserRouter, redirect } from "react-router-dom";
 import App from "@/App";
-import Archived from "@/pages/Archived";
-import DailyReview from "@/pages/DailyReview";
-import Resources from "@/pages/Resources";
-import Setting from "@/pages/Setting";
 import { initialGlobalState, initialUserState } from "@/store/module";
 
 const Root = lazy(() => import("@/layouts/Root"));
-const Auth = lazy(() => import("@/pages/Auth"));
+const SignIn = lazy(() => import("@/pages/SignIn"));
+const SignUp = lazy(() => import("@/pages/SignUp"));
 const AuthCallback = lazy(() => import("@/pages/AuthCallback"));
 const Explore = lazy(() => import("@/pages/Explore"));
 const Home = lazy(() => import("@/pages/Home"));
 const UserProfile = lazy(() => import("@/pages/UserProfile"));
 const MemoDetail = lazy(() => import("@/pages/MemoDetail"));
 const EmbedMemo = lazy(() => import("@/pages/EmbedMemo"));
+const Archived = lazy(() => import("@/pages/Archived"));
+const DailyReview = lazy(() => import("@/pages/DailyReview"));
+const Resources = lazy(() => import("@/pages/Resources"));
+const Inboxes = lazy(() => import("@/pages/Inboxes"));
+const Setting = lazy(() => import("@/pages/Setting"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
-const initialGlobalStateLoader = (() => {
-  let done = false;
-
-  return async () => {
-    if (done) {
-      return;
-    }
-    done = true;
-    try {
-      await initialGlobalState();
-    } catch (error) {
-      // do nth
-    }
-  };
-})();
+const initialGlobalStateLoader = async () => {
+  try {
+    await initialGlobalState();
+  } catch (error) {
+    // do nth
+  }
+  return null;
+};
 
 const initialUserStateLoader = async (redirectWhenNotFound = true) => {
   let user = undefined;
@@ -51,14 +46,15 @@ const router = createBrowserRouter([
   {
     path: "/",
     element: <App />,
-    loader: async () => {
-      await initialGlobalStateLoader();
-      return null;
-    },
+    loader: () => initialGlobalStateLoader(),
     children: [
       {
         path: "/auth",
-        element: <Auth />,
+        element: <SignIn />,
+      },
+      {
+        path: "/auth/signup",
+        element: <SignUp />,
       },
       {
         path: "/auth/callback",
@@ -86,6 +82,11 @@ const router = createBrowserRouter([
           {
             path: "resources",
             element: <Resources />,
+            loader: () => initialUserStateLoader(),
+          },
+          {
+            path: "inbox",
+            element: <Inboxes />,
             loader: () => initialUserStateLoader(),
           },
           {
